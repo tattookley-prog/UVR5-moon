@@ -8,6 +8,10 @@ import logging
 import yt_dlp
 import json
 import copy
+import shutil
+import numpy as np
+import soundfile as sf
+import librosa
 import gradio as gr
 import urllib.parse
 import assets.themes.loadThemes as loadThemes
@@ -783,28 +787,184 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
     except Exception as e:
         raise RuntimeError(f"Demucs separation failed: {e}") from e
 
-@track_presence("Performing Ensemble Mode Separation")
-def ensemble_separator(audio, models, out_format, hop_length, segment_size, denoise, overlap, batch_size, norm_thresh, amp_thresh, single_stem, progress=gr.Progress(track_tqdm=True)):
-    if not audio:
-        raise ValueError("Please provide an input audio file")
-    if not models:
-        raise ValueError("Please select at least one model")
+#=========================#
+#    Ensemble Functions   #
+#=========================#
 
+def load_audio_file(file_path):
+    """Load audio file and convert to numpy array"""
+    audio, sr = librosa.load(file_path, sr=None, mono=False)
+    if audio.ndim == 1:
+        audio = audio[np.newaxis, :]
+    return audio, sr
+
+def save_audio_file(audio, sr, file_path):
+    """Save audio file"""
+    if audio.ndim > 1:
+        sf.write(file_path, audio.T, sr)
+    else:
+        sf.write(file_path, audio, sr)
+
+def _align_audio_list(audios):
+    if not audios:
+        raise ValueError("No audio data found")
+
+    min_channels = min(audio.shape[0] if audio.ndim > 1 else 1 for audio in audios)
+    min_samples = min(audio.shape[-1] for audio in audios)
+
+    aligned = []
+    for audio in audios:
+        if audio.ndim == 1:
+            audio = audio[np.newaxis, :]
+        audio = audio[:min_channels, :min_samples]
+        aligned.append(audio)
+    return np.stack(aligned, axis=0)
+
+def combine_audio_average(audio_files):
+    """Combine audio using averaging method"""
+    audios = []
+    sr = None
+
+    for file_path in audio_files:
+        audio, current_sr = load_audio_file(file_path)
+        if sr is None:
+            sr = current_sr
+        elif sr != current_sr:
+            audio = librosa.resample(audio, orig_sr=current_sr, target_sr=sr)
+        audios.append(audio)
+
+    stacked = _align_audio_list(audios)
+    combined = np.mean(stacked, axis=0)
+    return combined, sr
+
+def combine_audio_median(audio_files):
+    """Combine audio using median method"""
+    audios = []
+    sr = None
+
+    for file_path in audio_files:
+        audio, current_sr = load_audio_file(file_path)
+        if sr is None:
+            sr = current_sr
+        elif sr != current_sr:
+            audio = librosa.resample(audio, orig_sr=current_sr, target_sr=sr)
+        audios.append(audio)
+
+    stacked = _align_audio_list(audios)
+    combined = np.median(stacked, axis=0)
+    return combined, sr
+
+def combine_audio_weighted(audio_files, weights):
+    """Combine audio with weighted averaging"""
+    if len(audio_files) != len(weights):
+        raise ValueError("Number of audio files must match number of weights")
+
+    weights = np.array(weights, dtype=np.float32)
+    if weights.sum() == 0:
+        raise ValueError("Weights sum cannot be zero")
+    weights = weights / weights.sum()
+
+    audios = []
+    sr = None
+
+    for file_path in audio_files:
+        audio, current_sr = load_audio_file(file_path)
+        if sr is None:
+            sr = current_sr
+        elif sr != current_sr:
+            audio = librosa.resample(audio, orig_sr=current_sr, target_sr=sr)
+        audios.append(audio)
+
+    stacked = _align_audio_list(audios)
+    combined = np.zeros_like(stacked[0], dtype=np.float32)
+    for audio, weight in zip(stacked, weights):
+        combined += audio * weight
+
+    return combined, sr
+
+@track_presence("Performing Ensemble Separation")
+def ensemble_separator(
+    audio,
+    models_list,
+    model_type="MDX-NET",
+    out_format="wav",
+    combine_method="average",
+    weights_str="",
+    hop_length=1024,
+    segment_size=256,
+    denoise=False,
+    overlap=0.25,
+    batch_size=1,
+    norm_thresh=0.9,
+    amp_thresh=0.7,
+    single_stem="",
+    progress=gr.Progress()
+):
+    """
+    Main Ensemble Mode function
+
+    Supports both:
+    1) Advanced signature with model_type/combine_method/weights
+    2) Legacy UI call used in this project (MDX-NET multiselect)
+    """
+    supported_model_types = {"BS/Mel Roformer", "MDX23C", "MDX-NET", "VR Arch"}
+    legacy_mode = model_type not in supported_model_types
+
+    if legacy_mode:
+        legacy_out_format = model_type
+        legacy_hop_length = out_format
+        legacy_segment_size = combine_method
+        legacy_denoise = weights_str
+        legacy_overlap = hop_length
+        legacy_batch_size = segment_size
+        legacy_norm_thresh = denoise
+        legacy_amp_thresh = overlap
+        legacy_single_stem = batch_size
+
+        model_type = "MDX-NET"
+        out_format = legacy_out_format
+        combine_method = "average"
+        weights_str = ""
+        hop_length = legacy_hop_length
+        segment_size = legacy_segment_size
+        denoise = legacy_denoise
+        overlap = legacy_overlap
+        batch_size = legacy_batch_size
+        norm_thresh = legacy_norm_thresh
+        amp_thresh = legacy_amp_thresh
+        single_stem = legacy_single_stem
+
+    temp_results = []
     logs = []
-    generated_files = []
-    total_models = len(models)
 
-    for index, model in enumerate(models):
-        model_safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', model)
-        model_output_dir = os.path.join(out_dir, "ensemble", model_safe_name)
-        os.makedirs(model_output_dir, exist_ok=True)
+    try:
+        if not audio:
+            raise ValueError("Please provide an input audio file")
+        if not models_list or len(models_list) < 2:
+            raise ValueError("Please select at least 2 models for ensemble mode")
 
-        model_path = os.path.join(models_dir, model)
-        if not os.path.exists(model_path):
-            gr.Info(f"This is the first time the {model} model is being used. The separation will take a little longer because the model needs to be downloaded.")
+        weights = None
+        if combine_method == "weighted":
+            try:
+                weights = [float(weight.strip()) for weight in weights_str.split(",")]
+                if len(weights) != len(models_list):
+                    raise ValueError(f"Number of weights ({len(weights)}) must match number of models ({len(models_list)})")
+            except ValueError as e:
+                raise ValueError(f"Invalid weights format: {e}")
 
-        try:
-            progress(index / total_models, desc=f"Loading model {index + 1}/{total_models}: {model}")
+        ensemble_temp_dir = os.path.join(out_dir, "ensemble_temp")
+        os.makedirs(ensemble_temp_dir, exist_ok=True)
+
+        all_stems = {}
+        total_models = len(models_list)
+
+        for index, model in enumerate(models_list):
+            progress(index / total_models, desc=f"Processing model {index + 1}/{total_models}: {model}")
+
+            model_safe_name = re.sub(r'[^a-zA-Z0-9._-]', '_', model)
+            model_output_dir = os.path.join(ensemble_temp_dir, model_safe_name)
+            os.makedirs(model_output_dir, exist_ok=True)
+
             separator = Separator(
                 log_level=logging.WARNING,
                 model_file_dir=models_dir,
@@ -814,32 +974,127 @@ def ensemble_separator(audio, models, out_format, hop_length, segment_size, deno
                 normalization_threshold=norm_thresh,
                 amplification_threshold=amp_thresh,
                 output_single_stem=single_stem,
-                mdx_params={
-                    "hop_length": hop_length,
-                    "segment_size": segment_size,
-                    "overlap": overlap,
-                    "batch_size": batch_size,
-                    "enable_denoise": denoise,
-                }
             )
 
-            separator.load_model(model_filename=model)
-            progress((index + 0.5) / total_models, desc=f"Separating with model {index + 1}/{total_models}: {model}")
+            if model_type == "BS/Mel Roformer":
+                model_filename = roformer_models.get(model, model)
+                separator.mdxc_params = {
+                    "segment_size": 256,
+                    "override_model_segment_size": False,
+                    "batch_size": 1,
+                    "overlap": 8,
+                }
+            elif model_type == "MDX23C":
+                model_filename = model
+                separator.mdxc_params = {
+                    "segment_size": 256,
+                    "override_model_segment_size": False,
+                    "batch_size": 1,
+                    "overlap": 8,
+                }
+            elif model_type == "MDX-NET":
+                model_filename = model
+                separator.mdx_params = {
+                    "hop_length": int(hop_length),
+                    "segment_size": int(segment_size),
+                    "overlap": float(overlap),
+                    "batch_size": int(batch_size),
+                    "enable_denoise": bool(denoise),
+                }
+            elif model_type == "VR Arch":
+                model_filename = model
+                separator.vr_params = {
+                    "batch_size": 1,
+                    "window_size": 512,
+                    "aggression": 5,
+                    "enable_tta": False,
+                    "enable_post_process": False,
+                    "post_process_threshold": 0.2,
+                    "high_end_process": False,
+                }
+            else:
+                raise ValueError(f"Unsupported model type: {model_type}")
+
+            separator.load_model(model_filename=model_filename)
             separation = separator.separate(audio)
 
-            model_files = [os.path.abspath(os.path.join(model_output_dir, file_name)) for file_name in separation]
-            generated_files.extend(model_files)
-            logs.append(f"{model}: {len(model_files)} stems generated")
+            for file_name in separation:
+                file_path = os.path.join(model_output_dir, file_name)
+                file_name_lower = file_name.lower()
 
-        except Exception as e:
-            logs.append(f"{model}: failed ({str(e)})")
+                if "vocals" in file_name_lower:
+                    stem_name = "vocals"
+                elif "instrumental" in file_name_lower:
+                    stem_name = "instrumental"
+                elif "drums" in file_name_lower:
+                    stem_name = "drums"
+                elif "bass" in file_name_lower:
+                    stem_name = "bass"
+                elif "other" in file_name_lower:
+                    stem_name = "other"
+                else:
+                    stem_name = os.path.splitext(file_name_lower)[0]
 
-    progress(1.0, desc="Ensemble processing complete")
+                if stem_name not in all_stems:
+                    all_stems[stem_name] = []
+                all_stems[stem_name].append(file_path)
+                temp_results.append(file_path)
 
-    if not generated_files:
-        raise RuntimeError("Ensemble separation failed for all selected models")
+        progress(0.8, desc="Combining results...")
 
-    return "\n".join(logs), generated_files
+        final_stems = []
+        for stem_name, stem_files in all_stems.items():
+            if combine_method == "average":
+                combined_audio, sr = combine_audio_average(stem_files)
+            elif combine_method == "median":
+                combined_audio, sr = combine_audio_median(stem_files)
+            elif combine_method == "weighted":
+                combined_audio, sr = combine_audio_weighted(stem_files, weights)
+            else:
+                raise ValueError(f"Unknown combine method: {combine_method}")
+
+            output_filename = f"ensemble_{stem_name}.{out_format}"
+            output_path = os.path.join(out_dir, output_filename)
+            save_audio_file(combined_audio, sr, output_path)
+            final_stems.append(output_path)
+
+        progress(1.0, desc="Ensemble separation complete!")
+
+        if legacy_mode:
+            logs.append(f"Processed {len(models_list)} models")
+            logs.append(f"Generated {len(final_stems)} combined stems")
+            return "\n".join(logs), final_stems
+
+        while len(final_stems) < 2:
+            final_stems.append(None)
+
+        return final_stems[0], final_stems[1]
+
+    except Exception as e:
+        raise RuntimeError(f"Ensemble separation failed: {e}") from e
+    finally:
+        ensemble_temp_dir = os.path.join(out_dir, "ensemble_temp")
+        if os.path.exists(ensemble_temp_dir):
+            try:
+                shutil.rmtree(ensemble_temp_dir)
+            except Exception as e:
+                print(f"Warning: Could not remove temp directory: {e}")
+
+def update_ensemble_models_list(model_type):
+    """Update models dropdown based on selected model type"""
+    if model_type == "BS/Mel Roformer":
+        return gr.update(choices=list(roformer_models.keys()))
+    elif model_type == "MDX23C":
+        return gr.update(choices=mdx23c_models)
+    elif model_type == "MDX-NET":
+        return gr.update(choices=mdxnet_models)
+    elif model_type == "VR Arch":
+        return gr.update(choices=vrarch_models)
+    return gr.update(choices=[])
+
+def toggle_weights_visibility(method):
+    """Show/hide weights field based on combine method"""
+    return gr.update(visible=(method == "weighted"))
 
 def update_stems(model):
     if model == "htdemucs_6s.yaml" or model == "MDX23C-DrumSep-aufr33-jarredou.ckpt":
@@ -2304,89 +2559,51 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                 
             demucs_button.click(demucs_separator, [demucs_audio, demucs_model, demucs_output_format, demucs_shifts, demucs_segment_size, demucs_segments_enabled, demucs_overlap, demucs_batch_size, demucs_normalization_threshold, demucs_amplification_threshold], [demucs_stem1, demucs_stem2, demucs_stem3, demucs_stem4, demucs_stem5, demucs_stem6])
 
-        with gr.TabItem("Ensemble Mode"):
+        with gr.TabItem(i18n("Ensemble Mode")):
+            gr.Markdown(i18n("⭐ Combine results from multiple models for better quality"))
+
             with gr.Row():
-                ensemble_models = gr.Dropdown(
-                    label = i18n("Select models for ensemble"),
-                    choices = mdxnet_models,
-                    value = initial_settings.get("Ensemble", {}).get("models", []),
-                    multiselect = True,
+                ensemble_model_type = gr.Dropdown(
+                    label = i18n("Model type"),
+                    info = i18n("Select the type of models to use in ensemble"),
+                    choices = ["BS/Mel Roformer", "MDX23C", "MDX-NET", "VR Arch"],
+                    value = initial_settings.get("Ensemble", {}).get("model_type", "BS/Mel Roformer"),
                     interactive = True
                 )
                 ensemble_output_format = gr.Dropdown(
-                    label = i18n("Select the output format"),
+                    label = i18n("Output format"),
                     choices = output_format,
                     value = initial_settings.get("Ensemble", {}).get("output_format", "wav"),
                     interactive = True
                 )
 
-            with gr.Accordion(i18n("Advanced settings"), open = False):
-                with gr.Group():
-                    with gr.Row():
-                        ensemble_hop_length = gr.Slider(
-                            label = i18n("Hop length"),
-                            minimum = 32,
-                            maximum = 2048,
-                            step = 32,
-                            value = initial_settings.get("Ensemble", {}).get("hop_length", 1024),
-                            interactive = True
-                        )
-                        ensemble_segment_size = gr.Slider(
-                            label = i18n("Segment size"),
-                            minimum = 32,
-                            maximum = 4000,
-                            step = 32,
-                            value = initial_settings.get("Ensemble", {}).get("segment_size", 256),
-                            interactive = True
-                        )
-                        ensemble_denoise = gr.Checkbox(
-                            label = i18n("Denoise"),
-                            value = initial_settings.get("Ensemble", {}).get("denoise", True),
-                            interactive = True
-                        )
-                    with gr.Row():
-                        ensemble_overlap = gr.Slider(
-                            label = i18n("Overlap"),
-                            minimum = 0.001,
-                            maximum = 0.999,
-                            step = 0.001,
-                            value = initial_settings.get("Ensemble", {}).get("overlap", 0.25),
-                            interactive = True
-                        )
-                        ensemble_batch_size = gr.Slider(
-                            label = i18n("Batch size"),
-                            minimum = 1,
-                            maximum = 16,
-                            step = 1,
-                            value = initial_settings.get("Ensemble", {}).get("batch_size", 1),
-                            interactive = True
-                        )
-                    with gr.Row():
-                        ensemble_normalization_threshold = gr.Slider(
-                            label = i18n("Normalization threshold"),
-                            minimum = 0.1,
-                            maximum = 1,
-                            step = 0.1,
-                            value = initial_settings.get("Ensemble", {}).get("normalization_threshold", 0.9),
-                            interactive = True
-                        )
-                        ensemble_amplification_threshold = gr.Slider(
-                            label = i18n("Amplification threshold"),
-                            minimum = 0.1,
-                            maximum = 1,
-                            step = 0.1,
-                            value = initial_settings.get("Ensemble", {}).get("amplification_threshold", 0.7),
-                            interactive = True
-                        )
-                    with gr.Row():
-                        ensemble_single_stem = gr.Textbox(
-                            label = i18n("Output only single stem"),
-                            placeholder = i18n("Optional, e.g. Instrumental"),
-                            value = initial_settings.get("Ensemble", {}).get("single_stem", ""),
-                            lines = 1,
-                            max_lines = 1,
-                            interactive = True
-                        )
+            with gr.Row():
+                ensemble_models = gr.Dropdown(
+                    label = i18n("Select models (minimum 2)"),
+                    info = i18n("Choose 2 or more models to combine their results"),
+                    choices = list(roformer_models.keys()),
+                    value = initial_settings.get("Ensemble", {}).get("models", []),
+                    multiselect = True,
+                    interactive = True
+                )
+
+            with gr.Row():
+                ensemble_combine_method = gr.Dropdown(
+                    label = i18n("Combine method"),
+                    info = i18n("Method to combine model outputs"),
+                    choices = ["average", "median", "weighted"],
+                    value = initial_settings.get("Ensemble", {}).get("combine_method", "average"),
+                    interactive = True
+                )
+                ensemble_weights = gr.Textbox(
+                    label = i18n("Weights (comma-separated)"),
+                    info = i18n("Example: 0.5, 0.3, 0.2"),
+                    placeholder = "0.5, 0.3, 0.2",
+                    value = initial_settings.get("Ensemble", {}).get("weights", ""),
+                    lines = 1,
+                    interactive = True,
+                    visible = False
+                )
 
             with gr.Row():
                 ensemble_audio = gr.Audio(
@@ -2394,32 +2611,64 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                     type = "filepath",
                     interactive = True
                 )
+
+            with gr.Accordion(i18n("Separation by link"), open = False):
+                with gr.Row():
+                    ensemble_link = gr.Textbox(
+                        label = i18n("Link"),
+                        placeholder = i18n("Paste the link here"),
+                        value = initial_settings.get("Ensemble", {}).get("link", ""),
+                        lines = 1,
+                        max_lines = 1,
+                        interactive = True
+                    )
+                with gr.Row():
+                    gr.Markdown(i18n("You can paste the link to the video/audio from many sites, check the complete list [here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)"))
+                with gr.Row():
+                    ensemble_download_button = gr.Button(
+                        i18n("Download audio from link!"),
+                        variant = "primary"
+                    )
+
+            ensemble_download_button.click(download_audio, [ensemble_link], [ensemble_audio])
+
+            ensemble_model_type.change(
+                fn = update_ensemble_models_list,
+                inputs = [ensemble_model_type],
+                outputs = [ensemble_models]
+            )
+
+            ensemble_combine_method.change(
+                fn = toggle_weights_visibility,
+                inputs = [ensemble_combine_method],
+                outputs = [ensemble_weights]
+            )
+
             with gr.Row():
-                ensemble_button = gr.Button(i18n("Separate!"), variant = "primary")
+                ensemble_button = gr.Button(i18n("🎵 Separate with Ensemble Mode!"), variant = "primary")
+
             with gr.Row():
-                ensemble_info = gr.Textbox(
-                    label = i18n("Output information"),
-                    lines = 6,
-                    interactive = False
+                ensemble_stem1 = gr.Audio(
+                    show_download_button = True,
+                    interactive = False,
+                    label = i18n("Ensemble Stem 1"),
+                    type = "filepath"
                 )
-            with gr.Row():
-                ensemble_files = gr.Files(
-                    label = i18n("Generated stems"),
-                    interactive = False
+                ensemble_stem2 = gr.Audio(
+                    show_download_button = True,
+                    interactive = False,
+                    label = i18n("Ensemble Stem 2"),
+                    type = "filepath"
                 )
 
             components["Ensemble"] = {
-                        "models": ensemble_models,
-                        "output_format": ensemble_output_format,
-                        "hop_length": ensemble_hop_length,
-                        "segment_size": ensemble_segment_size,
-                        "denoise": ensemble_denoise,
-                        "overlap": ensemble_overlap,
-                        "batch_size": ensemble_batch_size,
-                        "normalization_threshold": ensemble_normalization_threshold,
-                        "amplification_threshold": ensemble_amplification_threshold,
-                        "single_stem": ensemble_single_stem,
-                    }
+                "model_type": ensemble_model_type,
+                "output_format": ensemble_output_format,
+                "models": ensemble_models,
+                "combine_method": ensemble_combine_method,
+                "weights": ensemble_weights,
+                "link": ensemble_link,
+            }
             all_configurable_inputs.extend(components["Ensemble"].values())
 
             ensemble_button.click(
@@ -2427,17 +2676,12 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                 [
                     ensemble_audio,
                     ensemble_models,
+                    ensemble_model_type,
                     ensemble_output_format,
-                    ensemble_hop_length,
-                    ensemble_segment_size,
-                    ensemble_denoise,
-                    ensemble_overlap,
-                    ensemble_batch_size,
-                    ensemble_normalization_threshold,
-                    ensemble_amplification_threshold,
-                    ensemble_single_stem
+                    ensemble_combine_method,
+                    ensemble_weights
                 ],
-                [ensemble_info, ensemble_files]
+                [ensemble_stem1, ensemble_stem2]
             )
 
         with gr.TabItem(i18n("Leaderboard")):

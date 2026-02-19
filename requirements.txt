@@ -2,3 +2,6 @@ audio-separator[gpu]==0.39.1
 gradio==5.49.1
 yt_dlp
 pypresence
+librosa
+soundfile
+numpy
