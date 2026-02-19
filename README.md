@@ -39,6 +39,7 @@ You can also try it on HuggingFace Spaces running with Zero GPU (A100)!
 * BS Roformer Models
 * Music Source Separation Models
 * VIP Models
+* **Ensemble Mode - Combine multiple models for superior separation quality**
 * Separation of an audio/video from all sites supported by [yt_dlp](https://github.com/yt-dlp/yt-dlp). Check the complete list [here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
 * Batch Separation
 * Available in multiple languages
