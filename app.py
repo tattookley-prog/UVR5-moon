@@ -255,6 +255,10 @@ demucs_models = [
     'hdemucs_mmi.yaml',
 ]
 
+#=========================#
+#     Ensemble Models     #
+#=========================#
+ensemble_models_list = list(roformer_models.keys()) + mdx23c_models + mdxnet_models + vrarch_models + demucs_models
 output_format = [
     'wav',
     'flac',
@@ -782,6 +786,31 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
 
     except Exception as e:
         raise RuntimeError(f"Demucs separation failed: {e}") from e
+        
+@track_presence("Performing Ensemble Separation")
+def ensemble_separator(audio, models, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, progress=gr.Progress(track_tqdm=True)):
+    if not models:
+        raise ValueError("No models selected for ensemble")
+
+    stems_list = []
+    progress(0.1, desc="Starting ensemble separation...")
+
+    total_models = len(models)
+    for i, model in enumerate(models):
+        progress((i / total_models) * 0.8, desc=f"Processing model {i+1}/{total_models}: {model}")
+        
+        if model in roformer_models:
+            stems = roformer_separator(audio, model, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, "")
+        elif model in mdx23c_models:
+            stems = mdxc_separator(audio, model, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, "")
+        elif model in mdxnet_models:
+            stems = mdxnet_separator(audio, model, out_format, 1024, segment_size, True, overlap, batch_size, norm_thresh, amp_thresh, "")
+        elif model in vrarch_models:
+            stems = vrarch_separator(audio, model, out_format, 512, 5, True, False, 0.2, False, batch_size, norm_thresh, amp_thresh, "")
+        elif model in demucs_models:
+            stems = demucs_separator(audio, model, out_format, 2, 40, True, overlap, batch_size, norm_thresh, amp_thresh)
+        else:
+            continue
 
 def update_stems(model):
     if model == "htdemucs_6s.yaml" or model == "MDX23C-DrumSep-aufr33-jarredou.ckpt":
@@ -1158,6 +1187,29 @@ def get_downloaded_vrarch_models():
     else:
         print(f"The directory '{models_dir}' was not found")
         return gr.update(choices=vrarch_models, value=None)
+
+    return gr.update(choices=ensemble_models_list, value=[])
+
+def get_downloaded_ensemble_models():
+    downloaded_files = set()
+    if os.path.exists(models_dir) and os.path.isdir(models_dir):
+        try:
+            downloaded_files = set(os.listdir(models_dir))
+        except OSError as e:
+            print(f"Error reading directory '{models_dir}': {e}")
+            return gr.update(choices=[], value=[])
+    else:
+        print(f"The directory '{models_dir}' was not found")
+        return gr.update(choices=[], value=[])
+
+    available_models = []
+    for model in ensemble_models_list:
+        filename = roformer_models.get(model, model)
+        if filename in downloaded_files:
+            available_models.append(model)
+    
+    return gr.update(choices=available_models, value=[])
+    
 
     available_models = []
 
@@ -2368,5 +2420,6 @@ app.launch(
     server_name="",
     server_port=args.listen_port,
     inbrowser=args.open
+
 
 )
