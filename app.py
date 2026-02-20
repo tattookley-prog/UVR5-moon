@@ -794,7 +794,7 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
 def ensemble_separator(audio, models, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, progress=gr.Progress(track_tqdm=True)):
     if not models:
         gr.Warning("No models selected for ensemble")
-        return None, None  # Вместо raise
+        return None, None  
 
     stems_list = []
     progress(0.1, desc="Starting ensemble separation...")
@@ -2616,6 +2616,7 @@ app.launch(
 
 
 )
+
 
 
 
