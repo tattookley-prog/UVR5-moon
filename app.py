@@ -2262,6 +2262,176 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
 
             vrarch_button.click(vrarch_separator, [vrarch_audio, vrarch_model, vrarch_output_format, vrarch_window_size, vrarch_agression, vrarch_tta, vrarch_post_process, vrarch_post_process_threshold, vrarch_high_end_process, vrarch_batch_size, vrarch_normalization_threshold, vrarch_amplification_threshold, vrarch_single_stem], [vrarch_stem1, vrarch_stem2])
 
+        with gr.TabItem("Ensemble"):
+            with gr.Row():
+                ensemble_models = gr.Dropdown(
+                    label = i18n("Select models (multi-select)"),
+                    choices = [],
+                    value = initial_settings.get("Ensemble", {}).get("models", []),
+                    multiselect = True,
+                    interactive = True
+                )
+                with gr.Row():
+                    with gr.Column():
+                        ensemble_all_models = gr.Button(
+                            i18n("All models"),
+                            variant = "primary"                      
+                        )
+                        ensemble_downloaded_models = gr.Button(
+                            i18n("Downloaded models only"),
+                            variant = "primary"
+                        )
+            with gr.Row():
+                ensemble_output_format = gr.Dropdown(
+                    label = i18n("Select the output format"),
+                    choices = output_format,
+                    value = initial_settings.get("Ensemble", {}).get("output_format", None),
+                    interactive = True
+                )
+                ensemble_normalization_threshold = gr.Slider(
+                    label = i18n("Normalization threshold"),
+                    info = i18n("Threshold for audio normalization"),
+                    minimum = 0.0,
+                    maximum = 1.0,
+                    step = 0.1,
+                    value = initial_settings.get("Ensemble", {}).get("normalization_threshold", 0.9),
+                    interactive = True
+                )
+                ensemble_amplification_threshold = gr.Slider(
+                    label = i18n("Amplification threshold"),
+                    info = i18n("Threshold for audio amplification"),
+                    minimum = 0.0,
+                    maximum = 1.0,
+                    step = 0.1,
+                    value = initial_settings.get("Ensemble", {}).get("amplification_threshold", 0.9),
+                    interactive = True
+                )
+            with gr.Row():
+                ensemble_single_stem = gr.Textbox(
+                    label = i18n("Output only single stem"),
+                    placeholder = i18n("Write the stem you want, e.g. Instrumental"),
+                    value = initial_settings.get("Ensemble", {}).get("single_stem", ""),
+                    lines = 1,
+                    max_lines = 1,
+                    interactive = True
+                )
+            with gr.Row():
+                ensemble_audio = gr.Audio(
+                    label = i18n("Input audio"),
+                    type = "filepath",
+                    interactive = True
+                )
+            with gr.Accordion(i18n("Separation by link"), open = False):
+                with gr.Row():
+                    ensemble_link = gr.Textbox(
+                        label = i18n("Link"),
+                        placeholder = i18n("Paste the link here"),
+                        value = initial_settings.get("Ensemble", {}).get("link", ""),
+                        lines = 1,
+                        max_lines = 1,
+                        interactive = True
+                    )
+                with gr.Row():
+                    gr.Markdown(i18n("You can paste the link to the video/audio from many sites, check the complete list [here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)"))
+                with gr.Row():
+                    ensemble_download_button = gr.Button(
+                        i18n("Download!"),
+                        variant = "primary"
+                    )
+            ensemble_download_button.click(download_audio, [ensemble_link], [ensemble_audio])
+            with gr.Accordion(i18n("Batch separation"), open = False):
+                with gr.Row():
+                    ensemble_input_path = gr.Textbox(
+                        label = i18n("Input path"),
+                        placeholder = i18n("Place the input path here"),
+                        value = initial_settings.get("Ensemble", {}).get("input_path", ""),
+                        lines = 1,
+                        max_lines = 1,
+                        interactive = True
+                    )
+                    ensemble_output_path = gr.Textbox(
+                        label = i18n("Output path"),
+                        placeholder = i18n("Place the output path here"),
+                        value = initial_settings.get("Ensemble", {}).get("output_path", ""),
+                        lines = 1,
+                        max_lines = 1,
+                        interactive = True
+                        )
+                with gr.Row():
+                    ensemble_batch_button = gr.Button(i18n("Separate!"), variant = "primary")
+                with gr.Row():
+                    ensemble_info = gr.Textbox(
+                        label = i18n("Output information"),
+                        lines = 5,
+                        interactive = False
+                    )
+            ensemble_all_models.click(
+                fn = get_all_ensemble_models,
+                inputs = [],
+                outputs = [ensemble_models]
+            )
+            ensemble_downloaded_models.click(
+                fn = get_downloaded_ensemble_models,
+                inputs = [],
+                outputs = [ensemble_models]
+            )
+            components["Ensemble"] = {
+                "models": ensemble_models,
+                "output_format": ensemble_output_format,
+                "normalization_threshold": ensemble_normalization_threshold,
+                "amplification_threshold": ensemble_amplification_threshold,
+                "single_stem": ensemble_single_stem,
+                "link": ensemble_link,
+                "input_path": ensemble_input_path,
+                "output_path": ensemble_output_path
+            }
+            all_configurable_inputs.extend(components["Ensemble"].values())
+            ensemble_batch_button.click(ensemble_batch, [ensemble_input_path, ensemble_output_path, ensemble_models, ensemble_output_format, ensemble_normalization_threshold, ensemble_amplification_threshold, ensemble_single_stem], [ensemble_info])
+            with gr.Row():
+                ensemble_button = gr.Button(i18n("Separate!"), variant = "primary")
+            with gr.Row():
+                ensemble_stem1 = gr.Audio(
+                    show_download_button = True,
+                    interactive = False,
+                    type = "filepath",
+                    label = i18n("Stem 1")
+                )
+                ensemble_stem2 = gr.Audio(
+                    show_download_button = True,
+                    interactive = False,
+                    type = "filepath",
+                    label = i18n("Stem 2")
+                )
+                ensemble_stem3 = gr.Audio(
+                    show_download_button = True,
+                    interactive = False,
+                    type = "filepath",
+                    label = i18n("Stem 3"),
+                    visible = False
+                )
+                ensemble_stem4 = gr.Audio(
+                    show_download_button = True,
+                    interactive = False,
+                    type = "filepath",
+                    label = i18n("Stem 4"),
+                    visible = False
+                )
+                ensemble_stem5 = gr.Audio(
+                    show_download_button = True,
+                    interactive = False,
+                    type = "filepath",
+                    label = i18n("Stem 5"),
+                    visible = False
+                )
+                ensemble_stem6 = gr.Audio(
+                    show_download_button = True,
+                    interactive = False,
+                    type = "filepath",
+                    label = i18n("Stem 6"),
+                    visible = False
+                )
+            ensemble_button.click(ensemble_separator, [ensemble_audio, ensemble_models, ensemble_output_format, ensemble_normalization_threshold, ensemble_amplification_threshold, ensemble_single_stem], [ensemble_stem1, ensemble_stem2, ensemble_stem3, ensemble_stem4, ensemble_stem5, ensemble_stem6])
+        
         with gr.TabItem("Demucs"):
             with gr.Row():
                 demucs_model = gr.Dropdown(
@@ -2583,3 +2753,4 @@ app.launch(
 
 
 )
+
