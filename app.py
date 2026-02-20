@@ -785,17 +785,215 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
 
     except Exception as e:
         raise RuntimeError(f"Demucs separation failed: {e}") from e
-
-def get_all_ensemble_models():
-        all_models = []
-        all_models.extend(list(roformer_models.keys()))
-        all_models.extend(mdx23c_models)
-        all_models.extend(mdxnet_models)
-        all_models.extend(vrarch_models)
-        all_models.extend(demucs_models)
+    def get_all_ensemble_models():
+    all_models = []
+    all_models.extend(list(roformer_models.keys()))
+    all_models.extend(mdx23c_models)
+    all_models.extend(mdxnet_models)
+    all_models.extend(vrarch_models)
+    all_models.extend(demucs_models)
     return gr.update(choices=all_models, value=[])
 
+def get_downloaded_ensemble_models():
+    downloaded_files = set()
+    if os.path.exists(models_dir) and os.path.isdir(models_dir):
+        try:
+            downloaded_files = set(os.listdir(models_dir))
+        except OSError as e:
+            print(f"Error reading directory '{models_dir}': {e}")
+            return gr.update(choices=[], value=[])
+    else:
+        print(f"The directory '{models_dir}' was not found")
+        return gr.update(choices=[], value=[])
 
+    available_models = []
+    for model_name, filename in roformer_models.items():
+        if filename in downloaded_files:
+            available_models.append(model_name)
+    for filename in mdx23c_models:
+        if filename in downloaded_files:
+            available_models.append(filename)
+    for filename in mdxnet_models:
+        if filename in downloaded_files:
+            available_models.append(filename)
+    for filename in vrarch_models:
+        if filename in downloaded_files:
+            available_models.append(filename)
+    for filename in demucs_models:
+        if filename in downloaded_files:
+            available_models.append(filename)
+    return gr.update(choices=available_models, value=[])
+
+@track_presence("Performing Ensemble Separation")
+def ensemble_separator(audio, selected_models, out_format, norm_thresh, amp_thresh, single_stem, progress=gr.Progress(track_tqdm=True)):
+    if not selected_models:
+        raise RuntimeError("No models selected for ensemble.")
+    try:
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        all_stems = {}
+        num_models = len(selected_models)
+        for i, model in enumerate(selected_models):
+            progress((i / num_models) * 0.8, desc=f"Separating with {model}...")
+            if model in roformer_models:
+                roformer_model = roformer_models[model]
+                separator = Separator(
+                    log_level=logging.WARNING,
+                    model_file_dir=models_dir,
+                    output_dir=temp_dir,
+                    output_format=out_format,
+                    use_autocast=use_autocast,
+                    normalization_threshold=norm_thresh,
+                    amplification_threshold=amp_thresh,
+                    output_single_stem=single_stem,
+                    mdxc_params={
+                        "segment_size": 256,
+                        "override_model_segment_size": False,
+                        "batch_size": 1,
+                        "overlap": 0.25,
+                    }
+                )
+                separator.load_model(model_filename=roformer_model)
+                separation = separator.separate(audio)
+            elif model in mdx23c_models:
+                separator = Separator(
+                    log_level=logging.WARNING,
+                    model_file_dir=models_dir,
+                    output_dir=temp_dir,
+                    output_format=out_format,
+                    use_autocast=use_autocast,
+                    normalization_threshold=norm_thresh,
+                    amplification_threshold=amp_thresh,
+                    output_single_stem=single_stem,
+                    mdxc_params={
+                        "segment_size": 256,
+                        "override_model_segment_size": False,
+                        "batch_size": 1,
+                        "overlap": 0.25,
+                    }
+                )
+                separator.load_model(model_filename=model)
+                separation = separator.separate(audio)
+            elif model in mdxnet_models:
+                separator = Separator(
+                    log_level=logging.WARNING,
+                    model_file_dir=models_dir,
+                    output_dir=temp_dir,
+                    output_format=out_format,
+                    use_autocast=use_autocast,
+                    normalization_threshold=norm_thresh,
+                    amplification_threshold=amp_thresh,
+                    output_single_stem=single_stem,
+                    mdx_params={
+                        "hop_length": 1024,
+                        "segment_size": 256,
+                        "overlap": 0.25,
+                        "batch_size": 1,
+                        "enable_denoise": False,
+                    }
+                )
+                separator.load_model(model_filename=model)
+                separation = separator.separate(audio)
+            elif model in vrarch_models:
+                separator = Separator(
+                    log_level=logging.WARNING,
+                    model_file_dir=models_dir,
+                    output_dir=temp_dir,
+                    output_format=out_format,
+                    use_autocast=use_autocast,
+                    normalization_threshold=norm_thresh,
+                    amplification_threshold=amp_thresh,
+                    output_single_stem=single_stem,
+                    vr_params={
+                        "batch_size": 1,
+                        "window_size": 512,
+                        "aggression": 5,
+                        "enable_tta": False,
+                        "enable_post_process": False,
+                        "post_process_threshold": 0.2,
+                        "high_end_process": False,
+                    }
+                )
+                separator.load_model(model_filename=model)
+                separation = separator.separate(audio)
+            elif model in demucs_models:
+                separator = Separator(
+                    log_level=logging.WARNING,
+                    model_file_dir=models_dir,
+                    output_dir=temp_dir,
+                    output_format=out_format,
+                    use_autocast=use_autocast,
+                    normalization_threshold=norm_thresh,
+                    amplification_threshold=amp_thresh,
+                    demucs_params={
+                        "batch_size": 1,
+                        "segment_size": 256,
+                        "shifts": 2,
+                        "overlap": 0.25,
+                        "segments_enabled": True,
+                    }
+                )
+                separator.load_model(model_filename=model)
+                separation = separator.separate(audio)
+            else:
+                continue
+            for stem_file in separation:
+                stem_name = os.path.basename(stem_file).split('_')[0]
+                if stem_name not in all_stems:
+                    all_stems[stem_name] = []
+                all_stems[stem_name].append(stem_file)
+        progress(0.9, desc="Averaging stems...")
+        final_stems = []
+        for stem_name, files in all_stems.items():
+            if len(files) == 1:
+                final_stems.append(files[0])
+                continue
+            audios = []
+            sr = None
+            for f in files:
+                y, sr = librosa.load(f, sr=None)
+                audios.append(y)
+            avg_audio = np.mean(np.array(audios), axis=0)
+            output_file = os.path.join(out_dir, f"{stem_name}_ensemble.{out_format}")
+            sf.write(output_file, avg_audio, sr)
+            final_stems.append(output_file)
+        import shutil
+        shutil.rmtree(temp_dir)
+        progress(1.0, desc="Ensemble separation complete")
+        while len(final_stems) < 6:
+            final_stems.append(None)
+        return tuple(final_stems[:6])
+    except Exception as e:
+        raise RuntimeError(f"Ensemble separation failed: {e}") from e
+
+@track_presence("Performing Ensemble Batch Separation")
+def ensemble_batch(path_input, path_output, selected_models, out_format, norm_thresh, amp_thresh, single_stem, progress=gr.Progress()):
+    found_files.clear()
+    logs.clear()
+    if not selected_models:
+        logs.append("No models selected for ensemble.")
+        return "\n".join(logs)
+    for audio_files in os.listdir(path_input):
+        if audio_files.endswith(extensions):
+            found_files.append(audio_files)
+    total_files = len(found_files)
+    if total_files == 0:
+        logs.append("No valid audio files.")
+        return "\n".join(logs)
+    else:
+        logs.append(f"{total_files} audio files found")
+        found_files.sort()
+        progress(0, desc="Starting processing...")
+        for i, audio_files in enumerate(found_files):
+            progress((i / total_files), desc=f"Processing file {i+1}/{total_files}")
+            file_path = os.path.join(path_input, audio_files)
+            try:
+                ensemble_separator(file_path, selected_models, out_format, norm_thresh, amp_thresh, single_stem, progress)
+                logs.append(f"File: {audio_files} separated!")
+            except Exception as e:
+                logs.append(f"Error separating {audio_files}: {e}")
+        progress(1.0, desc="Processing complete")
+        return "\n".join(logs)
 def ensemble_separator(audio, selected_models, out_format, norm_thresh, amp_thresh, single_stem, progress=gr.Progress(track_tqdm=True)):
     if not selected_models:
         raise RuntimeError("No models selected for ensemble.")
@@ -2724,6 +2922,7 @@ app.launch(
 
 
 )
+
 
 
 
