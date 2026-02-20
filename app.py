@@ -795,37 +795,7 @@ def get_all_ensemble_models():
         all_models.extend(demucs_models)
     return gr.update(choices=all_models, value=[])
 
-def get_downloaded_ensemble_models():
-    downloaded_files = set()
-    if os.path.exists(models_dir) and os.path.isdir(models_dir):
-        try:
-            downloaded_files = set(os.listdir(models_dir))
-        except OSError as e:
-            print(f"Error reading directory '{models_dir}': {e}")
-            return gr.update(choices=[], value=[])
-    else:
-        print(f"The directory '{models_dir}' was not found")
-        return gr.update(choices=[], value=[])
 
-    available_models = []
-    for model_name, filename in roformer_models.items():
-        if filename in downloaded_files:
-            available_models.append(model_name)
-    for filename in mdx23c_models:
-        if filename in downloaded_files:
-            available_models.append(filename)
-    for filename in mdxnet_models:
-        if filename in downloaded_files:
-            available_models.append(filename)
-    for filename in vrarch_models:
-        if filename in downloaded_files:
-            available_models.append(filename)
-    for filename in demucs_models:
-        if filename in downloaded_files:
-            available_models.append(filename)
-    return gr.update(choices=available_models, value=[])
-
-@track_presence("Performing Ensemble Separation")
 def ensemble_separator(audio, selected_models, out_format, norm_thresh, amp_thresh, single_stem, progress=gr.Progress(track_tqdm=True)):
     if not selected_models:
         raise RuntimeError("No models selected for ensemble.")
@@ -2754,6 +2724,7 @@ app.launch(
 
 
 )
+
 
 
 
