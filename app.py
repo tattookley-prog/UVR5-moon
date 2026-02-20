@@ -786,7 +786,7 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
     except Exception as e:
         raise RuntimeError(f"Demucs separation failed: {e}") from e
 
-    def get_all_ensemble_models():
+def get_all_ensemble_models():
         all_models = []
         all_models.extend(list(roformer_models.keys()))
         all_models.extend(mdx23c_models)
@@ -2754,6 +2754,7 @@ app.launch(
 
 
 )
+
 
 
 
