@@ -2242,7 +2242,7 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                     )
 
             demucs_download_button.click(download_audio, [demucs_link], [demucs_audio])
-
+            
             with gr.Accordion(i18n("Batch separation"), open = False):
                 with gr.Row():
                     demucs_input_path = gr.Textbox(
@@ -2407,14 +2407,14 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                             value=0.7,
                             interactive=True
                         )
-
-            with gr.Row():
-                ensemble_audio = gr.Audio(
-                    label="Input audio",
-                    type="filepath",
-                    interactive=True
+            
+                with gr.Row():
+                    ensemble_audio = gr.Audio(
+                        label="Input audio",
+                        type="filepath",
+                        interactive=True
                 )
-
+                        
             with gr.Accordion("Batch separation", open=False):
                 with gr.Row():
                     ensemble_input_path = gr.Textbox(
@@ -2439,8 +2439,8 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                     )
                 ensemble_batch_button.click(ensemble_batch, [ensemble_input_path, ensemble_output_path, ensemble_model_select, ensemble_output_format, ensemble_segment_size, ensemble_override_segment_size, ensemble_overlap, ensemble_batch_size, ensemble_normalization_threshold, ensemble_amplification_threshold], [ensemble_info])
 
-                with gr.Row():
-                    ensemble_button = gr.Button("Separate!", variant="primary")
+            with gr.Row():
+                ensemble_button = gr.Button("Separate!", variant="primary")
             with gr.Row():
                 ensemble_stem1 = gr.Audio(
                     show_download_button=True,
@@ -2455,8 +2455,8 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                     type="filepath"
                 )
 
-                ensemble_button.click(ensemble_separator, [ensemble_audio, ensemble_model_select, ensemble_output_format, ensemble_segment_size, ensemble_override_segment_size, ensemble_overlap, ensemble_batch_size, ensemble_normalization_threshold, ensemble_amplification_threshold], [ensemble_stem1, ensemble_stem2])
-                
+            ensemble_button.click(ensemble_separator, [ensemble_audio, ensemble_model_select, ensemble_output_format, ensemble_segment_size, ensemble_override_segment_size, ensemble_overlap, ensemble_batch_size, ensemble_normalization_threshold, ensemble_amplification_threshold], [ensemble_stem1, ensemble_stem2])
+                        
                 with gr.TabItem(i18n("Leaderboard")):
             with gr.Group():
                 with gr.Row(equal_height=True):
@@ -2582,6 +2582,7 @@ app.launch(
 
 
 )
+
 
 
 
