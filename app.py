@@ -1308,7 +1308,13 @@ def roformer_update_stems(roformer_model):
         return gr.update(visible=True)
     else:
         return gr.update(visible=False)
-            
+
+def update_stems(model):
+    if model in ['MDX23C-DrumSep-aufr33-jarredou.ckpt', 'htdemucs_6s.yaml']:
+        return gr.update(visible=True)
+    else:
+        return gr.update(visible=False)
+
 with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 UVR5 UI 🎵", js = js_func) as app:
     gr.Markdown("<h1> 🎵 UVR5 UI 🎵 </h1>")
     gr.Markdown(i18n("If you like UVR5 UI you can star my repo on [GitHub](https://github.com/Eddycrack864/UVR5-UI)"))
