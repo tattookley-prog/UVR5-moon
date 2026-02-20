@@ -786,12 +786,12 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
     except Exception as e:
         raise RuntimeError(f"Demucs separation failed: {e}") from e
         def get_all_ensemble_models():
-    all_models = []
-    all_models.extend(list(roformer_models.keys()))
-    all_models.extend(mdx23c_models)
-    all_models.extend(mdxnet_models)
-    all_models.extend(vrarch_models)
-    all_models.extend(demucs_models)
+        all_models = []
+        all_models.extend(list(roformer_models.keys()))
+        all_models.extend(mdx23c_models)
+        all_models.extend(mdxnet_models)
+        all_models.extend(vrarch_models)
+        all_models.extend(demucs_models)
     return gr.update(choices=all_models, value=[])
 
 def get_downloaded_ensemble_models():
@@ -2753,4 +2753,5 @@ app.launch(
 
 
 )
+
 
