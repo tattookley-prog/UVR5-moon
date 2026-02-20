@@ -832,29 +832,38 @@ def ensemble_separator(audio, models, out_format, segment_size, override_seg_siz
 
     combined_stem1 = []
     combined_stem2 = []
-    sr = None
+    sr1 = None
+    sr2 = None
 
     for stems in stems_list:
         if len(stems) > 0 and stems[0]:
-            y1, sr1 = librosa.load(stems[0], sr=None)
+            y1, s1 = librosa.load(stems[0], sr=None)
             combined_stem1.append(y1)
-            sr = sr1
+            sr1 = s1
         if len(stems) > 1 and stems[1]:
-            y2, sr2 = librosa.load(stems[1], sr=None)
+            y2, s2 = librosa.load(stems[1], sr=None)
             combined_stem2.append(y2)
-            sr = sr2
+            sr2 = s2
 
     if combined_stem1:
-        avg_stem1 = np.mean(np.array(combined_stem1), axis=0)
-        stem1_path = os.path.join(out_dir, f"ensemble_stem1.{out_format}")
-        sf.write(stem1_path, avg_stem1, sr)
+        min_len1 = min(len(y) for y in combined_stem1)
+        if min_len1 > 0:
+            avg_stem1 = np.mean(np.array([y[:min_len1] for y in combined_stem1]), axis=0)
+            stem1_path = os.path.join(out_dir, f"ensemble_stem1.{out_format}")
+            sf.write(stem1_path, avg_stem1, sr1)
+        else:
+            stem1_path = None
     else:
         stem1_path = None
 
     if combined_stem2:
-        avg_stem2 = np.mean(np.array(combined_stem2), axis=0)
-        stem2_path = os.path.join(out_dir, f"ensemble_stem2.{out_format}")
-        sf.write(stem2_path, avg_stem2, sr)
+        min_len2 = min(len(y) for y in combined_stem2)
+        if min_len2 > 0:
+            avg_stem2 = np.mean(np.array([y[:min_len2] for y in combined_stem2]), axis=0)
+            stem2_path = os.path.join(out_dir, f"ensemble_stem2.{out_format}")
+            sf.write(stem2_path, avg_stem2, sr2)
+        else:
+            stem2_path = None
     else:
         stem2_path = None
 
