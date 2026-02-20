@@ -781,7 +781,14 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
         separation = separator.separate(audio)
 
         stems = [os.path.join(out_dir, file_name) for file_name in separation]
-        
+
+        expected_stems = 6 if model == "htdemucs_6s.yaml" else 4
+        if len(stems) < expected_stems:
+            raise RuntimeError(
+                f"Model returned {len(stems)} output file(s) instead of the expected {expected_stems}. "
+                f"Ensure all required model files for '{model}' are properly downloaded."
+            )
+
         if model == "htdemucs_6s.yaml":
             return stems[0], stems[1], stems[2], stems[3], stems[4], stems[5]
         else:
