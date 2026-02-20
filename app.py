@@ -1107,6 +1107,36 @@ def demucs_batch(path_input, path_output, model, out_format, shifts, segment_siz
         progress(1.0, desc="Processing complete")
         return "\n".join(logs)
 
+@track_presence("Performing Ensemble Batch Separation")
+def ensemble_batch(path_input, path_output, models, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, progress=gr.Progress()):
+    found_files.clear()
+    logs.clear()
+
+    for audio_files in os.listdir(path_input):
+        if audio_files.endswith(extensions):
+            found_files.append(audio_files)
+    total_files = len(found_files)
+
+    if total_files == 0:
+        logs.append("No valid audio files.")
+        return "\n".join(logs)
+    else:
+        logs.append(f"{total_files} audio files found")
+        found_files.sort()
+        progress(0, desc="Starting ensemble batch processing...")
+
+        for i, audio_files in enumerate(found_files):
+            progress((i / total_files), desc=f"Processing file {i+1}/{total_files}")
+            file_path = os.path.join(path_input, audio_files)
+            try:
+                stems = ensemble_separator(file_path, models, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh)
+                logs.append(f"File: {audio_files} ensemble separated!")
+            except Exception as e:
+                logs.append(f"Error separating {audio_files}: {e}")
+        
+        progress(1.0, desc="Batch processing complete")
+        return "\n".join(logs)
+        
 def get_all_roformer_models():
     return gr.update(choices=list(roformer_models.keys()), value=None)
 
@@ -1191,6 +1221,9 @@ def get_downloaded_vrarch_models():
         print(f"The directory '{models_dir}' was not found")
         return gr.update(choices=vrarch_models, value=None)
 
+    return gr.update(choices=ensemble_models_list, value=[])
+
+def get_all_ensemble_models():
     return gr.update(choices=ensemble_models_list, value=[])
 
 def get_downloaded_ensemble_models():
@@ -2104,7 +2137,7 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                 )
 
             vrarch_button.click(vrarch_separator, [vrarch_audio, vrarch_model, vrarch_output_format, vrarch_window_size, vrarch_agression, vrarch_tta, vrarch_post_process, vrarch_post_process_threshold, vrarch_high_end_process, vrarch_batch_size, vrarch_normalization_threshold, vrarch_amplification_threshold, vrarch_single_stem], [vrarch_stem1, vrarch_stem2])
-
+        
         with gr.TabItem("Demucs"):
             with gr.Row():
                 demucs_model = gr.Dropdown(
@@ -2300,8 +2333,131 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
             demucs_model.change(update_stems, inputs=[demucs_model], outputs=stem6)
                 
             demucs_button.click(demucs_separator, [demucs_audio, demucs_model, demucs_output_format, demucs_shifts, demucs_segment_size, demucs_segments_enabled, demucs_overlap, demucs_batch_size, demucs_normalization_threshold, demucs_amplification_threshold], [demucs_stem1, demucs_stem2, demucs_stem3, demucs_stem4, demucs_stem5, demucs_stem6])
+            
+        with gr.TabItem("Ensemble"):
+            with gr.Row():
+                ensemble_model_select = gr.Dropdown(
+                    label="Select models for ensemble",
+                    choices=[],
+                    multiselect=True,
+                    value=[],
+                    interactive=True
+                )
+            with gr.Row():
+                    with gr.Column():
+                        ensemble_all_models = gr.Button("All models", variant="primary")
+                        ensemble_downloaded_models = gr.Button("Downloaded models only", variant="primary")
+                    ensemble_output_format = gr.Dropdown(
+                        label="Select the output format",
+                        choices=output_format,
+                        value="wav",
+                        interactive=True
+                    )
 
-        with gr.TabItem(i18n("Leaderboard")):
+            ensemble_all_models.click(get_all_ensemble_models, inputs=[], outputs=[ensemble_model_select])
+            ensemble_downloaded_models.click(get_downloaded_ensemble_models, inputs=[], outputs=[ensemble_model_select])
+
+            with gr.Accordion("Advanced settings", open=False):
+                with gr.Group():
+                    with gr.Row():
+                        ensemble_segment_size = gr.Slider(
+                            label="Segment size",
+                            minimum=32,
+                            maximum=4000,
+                            step=32,
+                            value=256,
+                            interactive=True
+                        )
+                        ensemble_override_segment_size = gr.Checkbox(
+                            label="Override segment size",
+                            value=False,
+                            interactive=True
+                        )
+                    with gr.Row():
+                        ensemble_overlap = gr.Slider(
+                            label="Overlap",
+                            minimum=2,
+                            maximum=10,
+                            step=1,
+                            value=8,
+                            interactive=True
+                        )
+                        ensemble_batch_size = gr.Slider(
+                            label="Batch size",
+                            minimum=1,
+                            maximum=16,
+                            step=1,
+                            value=1,
+                            interactive=True
+                        )
+                    with gr.Row():
+                        ensemble_normalization_threshold = gr.Slider(
+                            label="Normalization threshold",
+                            minimum=0.1,
+                            maximum=1,
+                            step=0.1,
+                            value=0.9,
+                            interactive=True
+                        )
+                        ensemble_amplification_threshold = gr.Slider(
+                            label="Amplification threshold",
+                            minimum=0.1,
+                            maximum=1,
+                            step=0.1,
+                            value=0.7,
+                            interactive=True
+                        )
+
+            with gr.Row():
+                ensemble_audio = gr.Audio(
+                    label="Input audio",
+                    type="filepath",
+                    interactive=True
+                )
+
+            with gr.Accordion("Batch separation", open=False):
+                with gr.Row():
+                    ensemble_input_path = gr.Textbox(
+                        label="Input path",
+                        placeholder="Place the input path here",
+                        lines=1,
+                        interactive=True
+                    )
+                    ensemble_output_path = gr.Textbox(
+                        label="Output path",
+                        placeholder="Place the output path here",
+                        lines=1,
+                        interactive=True
+                    )
+                with gr.Row():
+                    ensemble_batch_button = gr.Button("Separate!", variant="primary")
+                with gr.Row():
+                    ensemble_info = gr.Textbox(
+                        label="Output information",
+                        lines=5,
+                        interactive=False
+                    )
+                ensemble_batch_button.click(ensemble_batch, [ensemble_input_path, ensemble_output_path, ensemble_model_select, ensemble_output_format, ensemble_segment_size, ensemble_override_segment_size, ensemble_overlap, ensemble_batch_size, ensemble_normalization_threshold, ensemble_amplification_threshold], [ensemble_info])
+
+                with gr.Row():
+                ensemble_button = gr.Button("Separate!", variant="primary")
+            with gr.Row():
+                ensemble_stem1 = gr.Audio(
+                    show_download_button=True,
+                    interactive=False,
+                    label="Ensemble Stem 1",
+                    type="filepath"
+                )
+                ensemble_stem2 = gr.Audio(
+                    show_download_button=True,
+                    interactive=False,
+                    label="Ensemble Stem 2",
+                    type="filepath"
+                )
+
+                ensemble_button.click(ensemble_separator, [ensemble_audio, ensemble_model_select, ensemble_output_format, ensemble_segment_size, ensemble_override_segment_size, ensemble_overlap, ensemble_batch_size, ensemble_normalization_threshold, ensemble_amplification_threshold], [ensemble_stem1, ensemble_stem2])
+                
+                with gr.TabItem(i18n("Leaderboard")):
             with gr.Group():
                 with gr.Row(equal_height=True):
                     list_filter = gr.Dropdown(
@@ -2426,4 +2582,5 @@ app.launch(
 
 
 )
+
 
