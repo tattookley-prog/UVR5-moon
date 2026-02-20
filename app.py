@@ -15,6 +15,9 @@ from audio_separator.separator import Separator
 from assets.i18n.i18n import I18nAuto
 from argparse import ArgumentParser
 from assets.presence.discord_presence import RPCManager, track_presence
+import librosa
+import soundfile as sf
+import numpy as np
 
 i18n = I18nAuto()
 
@@ -2423,3 +2426,4 @@ app.launch(
 
 
 )
+
