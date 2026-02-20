@@ -2440,7 +2440,7 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                 ensemble_batch_button.click(ensemble_batch, [ensemble_input_path, ensemble_output_path, ensemble_model_select, ensemble_output_format, ensemble_segment_size, ensemble_override_segment_size, ensemble_overlap, ensemble_batch_size, ensemble_normalization_threshold, ensemble_amplification_threshold], [ensemble_info])
 
                 with gr.Row():
-                ensemble_button = gr.Button("Separate!", variant="primary")
+                    ensemble_button = gr.Button("Separate!", variant="primary")
             with gr.Row():
                 ensemble_stem1 = gr.Audio(
                     show_download_button=True,
@@ -2582,5 +2582,6 @@ app.launch(
 
 
 )
+
 
 
