@@ -1302,6 +1302,12 @@ function refresh() {{
     }}
 }}
 """
+
+def roformer_update_stems(roformer_model):
+    if roformer_model == 'BS Roformer SW by jarredou':
+        return gr.update(visible=True)
+    else:
+        return gr.update(visible=False)
             
 with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 UVR5 UI 🎵", js = js_func) as app:
     gr.Markdown("<h1> 🎵 UVR5 UI 🎵 </h1>")
@@ -2607,6 +2613,7 @@ app.launch(
 
 
 )
+
 
 
 
