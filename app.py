@@ -842,12 +842,12 @@ def ensemble_separator(audio, models, out_format, segment_size, override_seg_siz
     sr = None
 
     for stems in stems_list:
-        if len(stems) > 0 and stems[0]:
-            y1, sr1 = librosa.load(stems[0], sr=None)
+        if len(stems) > 0 and stems[0] and os.path.isfile(stems[0]):
+            y1, sr1 = sf.read(stems[0], always_2d=True)
             combined_stem1.append(y1)
             sr = sr1
-        if len(stems) > 1 and stems[1]:
-            y2, sr2 = librosa.load(stems[1], sr=None)
+        if len(stems) > 1 and stems[1] and os.path.isfile(stems[1]):
+            y2, sr2 = sf.read(stems[1], always_2d=True)
             combined_stem2.append(y2)
             sr = sr2
 
