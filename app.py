@@ -845,6 +845,8 @@ def ensemble_separator(audio, models, out_format, segment_size, override_seg_siz
             sr = sr2
 
     if combined_stem1:
+        min_len1 = min(y.shape[0] for y in combined_stem1)
+        combined_stem1 = [y[:min_len1] for y in combined_stem1]
         avg_stem1 = np.mean(np.array(combined_stem1), axis=0)
         stem1_path = os.path.join(out_dir, f"ensemble_stem1.{out_format}")
         sf.write(stem1_path, avg_stem1, sr)
@@ -852,6 +854,8 @@ def ensemble_separator(audio, models, out_format, segment_size, override_seg_siz
         stem1_path = None
 
     if combined_stem2:
+        min_len2 = min(y.shape[0] for y in combined_stem2)
+        combined_stem2 = [y[:min_len2] for y in combined_stem2]
         avg_stem2 = np.mean(np.array(combined_stem2), axis=0)
         stem2_path = os.path.join(out_dir, f"ensemble_stem2.{out_format}")
         sf.write(stem2_path, avg_stem2, sr)
