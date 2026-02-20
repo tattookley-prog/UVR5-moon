@@ -793,7 +793,8 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
 @track_presence("Performing Ensemble Separation")
 def ensemble_separator(audio, models, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, progress=gr.Progress(track_tqdm=True)):
     if not models:
-        raise ValueError("No models selected for ensemble")
+        gr.Warning("No models selected for ensemble")
+        return None, None  # Вместо raise
 
     stems_list = []
     progress(0.1, desc="Starting ensemble separation...")
@@ -802,30 +803,63 @@ def ensemble_separator(audio, models, out_format, segment_size, override_seg_siz
     for i, model in enumerate(models):
         progress((i / total_models) * 0.8, desc=f"Processing model {i+1}/{total_models}: {model}")
         
-        if model in roformer_models:
-            stems = roformer_separator(audio, model, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, "")
-        elif model in mdx23c_models:
-            stems = mdxc_separator(audio, model, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, "")
-        elif model in mdxnet_models:
-            stems = mdxnet_separator(audio, model, out_format, 1024, segment_size, True, overlap, batch_size, norm_thresh, amp_thresh, "")
-        elif model in vrarch_models:
-            stems = vrarch_separator(audio, model, out_format, 512, 5, True, False, 0.2, False, batch_size, norm_thresh, amp_thresh, "")
-        elif model in demucs_models:
-            stems = demucs_separator(audio, model, out_format, 2, 40, True, overlap, batch_size, norm_thresh, amp_thresh)
-        else:
-            continue
+        try:
+            if model in roformer_models:
+                stems = roformer_separator(audio, model, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, "")
+            elif model in mdx23c_models:
+                stems = mdxc_separator(audio, model, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, "")
+            elif model in mdxnet_models:
+                stems = mdxnet_separator(audio, model, out_format, 1024, segment_size, True, overlap, batch_size, norm_thresh, amp_thresh, "")
+            elif model in vrarch_models:
+                stems = vrarch_separator(audio, model, out_format, 512, 5, True, False, 0.2, False, batch_size, norm_thresh, amp_thresh, "")
+            elif model in demucs_models:
+                stems = demucs_separator(audio, model, out_format, 2, 40, True, overlap, batch_size, norm_thresh, amp_thresh)
+            else:
+                continue 
+            
+            if stems and len(stems) >= 2:
+                stems_list.append(stems[:2])
+        except Exception as e:
+            gr.Warning(f"Error processing model {model}: {e}")
+            continue  
 
-def update_stems(model):
-    if model == "htdemucs_6s.yaml" or model == "MDX23C-DrumSep-aufr33-jarredou.ckpt":
-        return gr.update(visible=True)
+    if not stems_list:
+        gr.Warning("No valid separations performed")
+        return None, None  
+
+    progress(0.9, desc="Combining results...")
+
+
+    combined_stem1 = []
+    combined_stem2 = []
+    sr = None
+
+    for stems in stems_list:
+        if len(stems) > 0 and stems[0]:
+            y1, sr1 = librosa.load(stems[0], sr=None)
+            combined_stem1.append(y1)
+            sr = sr1
+        if len(stems) > 1 and stems[1]:
+            y2, sr2 = librosa.load(stems[1], sr=None)
+            combined_stem2.append(y2)
+            sr = sr2
+
+    if combined_stem1:
+        avg_stem1 = np.mean(np.array(combined_stem1), axis=0)
+        stem1_path = os.path.join(out_dir, f"ensemble_stem1.{out_format}")
+        sf.write(stem1_path, avg_stem1, sr)
     else:
-        return gr.update(visible=False)
-    
-def roformer_update_stems(roformer_model):
-    if roformer_model == 'BS Roformer SW by jarredou':
-        return gr.update(visible=True)
+        stem1_path = None
+
+    if combined_stem2:
+        avg_stem2 = np.mean(np.array(combined_stem2), axis=0)
+        stem2_path = os.path.join(out_dir, f"ensemble_stem2.{out_format}")
+        sf.write(stem2_path, avg_stem2, sr)
     else:
-        return gr.update(visible=False)
+        stem2_path = None
+
+    progress(1.0, desc="Ensemble separation completed")
+    return stem1_path, stem2_path 
 
 @track_presence("Performing BS/Mel Roformer Batch Separation")
 def roformer_batch(path_input, path_output, model_key, out_format, segment_size, override_seg_size, overlap, batch_size, norm_thresh, amp_thresh, single_stem, progress=gr.Progress()):
@@ -2582,6 +2616,7 @@ app.launch(
 
 
 )
+
 
 
 
