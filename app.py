@@ -2333,7 +2333,7 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
             demucs_model.change(update_stems, inputs=[demucs_model], outputs=stem6)
                 
             demucs_button.click(demucs_separator, [demucs_audio, demucs_model, demucs_output_format, demucs_shifts, demucs_segment_size, demucs_segments_enabled, demucs_overlap, demucs_batch_size, demucs_normalization_threshold, demucs_amplification_threshold], [demucs_stem1, demucs_stem2, demucs_stem3, demucs_stem4, demucs_stem5, demucs_stem6])
-            
+        
         with gr.TabItem("Ensemble"):
             with gr.Row():
                 ensemble_model_select = gr.Dropdown(
@@ -2456,8 +2456,8 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                 )
 
             ensemble_button.click(ensemble_separator, [ensemble_audio, ensemble_model_select, ensemble_output_format, ensemble_segment_size, ensemble_override_segment_size, ensemble_overlap, ensemble_batch_size, ensemble_normalization_threshold, ensemble_amplification_threshold], [ensemble_stem1, ensemble_stem2])
-                        
-                with gr.TabItem(i18n("Leaderboard")):
+        
+        with gr.TabItem(i18n("Leaderboard")):
             with gr.Group():
                 with gr.Row(equal_height=True):
                     list_filter = gr.Dropdown(
@@ -2582,6 +2582,7 @@ app.launch(
 
 
 )
+
 
 
 
