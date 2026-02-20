@@ -59,6 +59,11 @@ class RichPresenceManager:
                 "small_image": "demucs",
                 "small_text": "Demucs"
             },
+            # Ensemble
+            "Performing Ensemble Separation": {
+                "small_image": "logo",
+                "small_text": "Ensemble"
+            },
             # Idling
             "Idling": {
                 "small_image": "idling",
