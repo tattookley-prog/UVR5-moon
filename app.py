@@ -1280,15 +1280,6 @@ def get_downloaded_ensemble_models():
     
     return gr.update(choices=available_models, value=[])
     
-
-    available_models = []
-
-    for filename in vrarch_models:
-        if filename in downloaded_files:
-            available_models.append(filename)
-    
-    return gr.update(choices=available_models, value=None)
-
 def read_mode_config():
     try:
         with open(config_file, "r", encoding="utf8") as f:
@@ -2616,6 +2607,7 @@ app.launch(
 
 
 )
+
 
 
 
