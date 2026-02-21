@@ -2673,7 +2673,7 @@ with gr.Blocks(theme = loadThemes.load_json() or "NoCrypt/miku", title = "🎵 U
                     label = i18n("Model to download"),
                     info = i18n("Select the model to download using the selected method"),
                     value = lambda : None,
-                    choices = list(roformer_models.keys()) + mdx23c_models + mdxnet_models + vrarch_models,
+                    choices = list(roformer_models.keys()) + mdx23c_models + mdxnet_models + vrarch_models + demucs_models,
                     interactive = True
                 )
                 alternative_model_downloader_button = gr.Button(i18n("Download!"), variant = "primary")
