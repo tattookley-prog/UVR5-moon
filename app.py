@@ -841,15 +841,31 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
 
         expected_stems = 6 if model == "htdemucs_6s.yaml" else 4
         if len(stems) < expected_stems:
-            # Separation produced no output – likely caused by a corrupted or
-            # incomplete model weight file (partial download).  Check checksums
-            # of every .th file required by this model, remove any that are
-            # invalid, and retry once so load_model can re-download them.
-            if not _verify_demucs_model_files(models_dir, model):
-                gr.Info(f"Corrupted model files detected for '{model}'. Re-downloading…")
-                separator.load_model(model_filename=model)
-                separation = separator.separate(audio)
-                stems = [os.path.join(out_dir, file_name) for file_name in separation]
+            # Separation produced fewer outputs than expected – could be a
+            # missing, incomplete, or corrupted model weight file.  Remove any
+            # invalid .th files so they can be re-downloaded, then retry once
+            # with a fresh Separator instance regardless of verification result.
+            _verify_demucs_model_files(models_dir, model)
+            gr.Info(f"Demucs returned {len(stems)} output(s) for '{model}', expected {expected_stems}. Reloading model files and retrying…")
+            retry_separator = Separator(
+                log_level=logging.WARNING,
+                model_file_dir=models_dir,
+                output_dir=out_dir,
+                output_format=out_format,
+                use_autocast=use_autocast,
+                normalization_threshold=norm_thresh,
+                amplification_threshold=amp_thresh,
+                demucs_params={
+                    "batch_size": batch_size,
+                    "segment_size": segment_size,
+                    "shifts": shifts,
+                    "overlap": overlap,
+                    "segments_enabled": segments_enabled,
+                }
+            )
+            retry_separator.load_model(model_filename=model)
+            separation = retry_separator.separate(audio)
+            stems = [os.path.join(out_dir, file_name) for file_name in separation]
 
         if len(stems) < expected_stems:
             raise RuntimeError(
