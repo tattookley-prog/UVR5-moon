@@ -911,7 +911,16 @@ def ensemble_separator(audio, models, out_format, segment_size, override_seg_siz
             elif model in vrarch_models:
                 stems = vrarch_separator(audio, model, out_format, 512, 5, True, False, 0.2, False, batch_size, norm_thresh, amp_thresh, "")
             elif model in demucs_models:
-                stems = demucs_separator(audio, model, out_format, 2, 40, True, overlap, batch_size, norm_thresh, amp_thresh, "Vocals")
+                # Run without single-stem filtering so all stems are produced.
+                # output_single_stem="Vocals" causes audio-separator to silently
+                # return 0 files for bag-of-models like htdemucs_ft.yaml.
+                # demucs_separator returns (bass, drums, other, vocals, ...) for
+                # 4- and 6-stem models, so vocals is always at index 3.
+                stems = demucs_separator(audio, model, out_format, 2, 40, True, overlap, batch_size, norm_thresh, amp_thresh, "")
+                vocals_stem = stems[3] if stems and len(stems) > 3 else None
+                if vocals_stem:
+                    stems_list.append((vocals_stem, None))
+                continue
             else:
                 continue 
             
