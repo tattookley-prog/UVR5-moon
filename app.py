@@ -8,6 +8,8 @@ import logging
 import yt_dlp
 import json
 import copy
+import glob
+import hashlib
 import gradio as gr
 import urllib.parse
 import assets.themes.loadThemes as loadThemes
@@ -750,6 +752,61 @@ def vrarch_separator(audio, model, out_format, window_size, aggression, tta, pos
     except Exception as e:
         raise RuntimeError(f"VR ARCH separation failed: {e}") from e
 
+def _verify_demucs_model_files(models_dir, model_yaml):
+    """
+    Verify that the .th weight files for a Demucs bag-of-models are present and
+    intact by checking the SHA-256 checksums encoded in their filenames
+    (e.g. ``5c90dfd2-34c22ccb.th`` embeds the expected checksum ``34c22ccb``).
+
+    Any file whose checksum does not match is deleted so that a subsequent
+    ``load_model`` call will re-download it.
+
+    Returns ``True`` when every file is valid, ``False`` when at least one file
+    was missing or removed (triggering a re-download).
+    """
+    try:
+        import yaml
+    except ImportError:
+        return True  # pyyaml not available; skip verification
+
+    yaml_path = os.path.join(models_dir, model_yaml)
+    if not os.path.exists(yaml_path):
+        return True  # YAML not yet present; load_model will handle it
+
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+    except Exception:
+        return True  # Unreadable YAML; let load_model raise the real error
+
+    if not isinstance(data, dict) or "models" not in data:
+        return True  # Not a bag-of-models YAML; nothing to check
+
+    files_invalid = False
+    for sig in data.get("models", []):
+        matches = glob.glob(os.path.join(models_dir, f"{sig}-*.th"))
+        if not matches:
+            files_invalid = True  # File is absent; load_model will download it
+            continue
+        for th_file in matches:
+            stem = os.path.splitext(os.path.basename(th_file))[0]
+            if "-" not in stem:
+                continue
+            _, expected_checksum = stem.split("-", 1)
+            h = hashlib.sha256()
+            with open(th_file, "rb") as fh:
+                while True:
+                    chunk = fh.read(65536)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+            if h.hexdigest()[:len(expected_checksum)] != expected_checksum:
+                os.remove(th_file)
+                files_invalid = True
+
+    return not files_invalid
+
+
 @track_presence("Performing Demucs Separation")
 def demucs_separator(audio, model, out_format, shifts, segment_size, segments_enabled, overlap, batch_size, norm_thresh, amp_thresh, progress=gr.Progress(track_tqdm=True)):
     model_path = os.path.join(models_dir, model)
@@ -783,6 +840,17 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
         stems = [os.path.join(out_dir, file_name) for file_name in separation]
 
         expected_stems = 6 if model == "htdemucs_6s.yaml" else 4
+        if len(stems) < expected_stems:
+            # Separation produced no output – likely caused by a corrupted or
+            # incomplete model weight file (partial download).  Check checksums
+            # of every .th file required by this model, remove any that are
+            # invalid, and retry once so load_model can re-download them.
+            if not _verify_demucs_model_files(models_dir, model):
+                gr.Info(f"Corrupted model files detected for '{model}'. Re-downloading…")
+                separator.load_model(model_filename=model)
+                separation = separator.separate(audio)
+                stems = [os.path.join(out_dir, file_name) for file_name in separation]
+
         if len(stems) < expected_stems:
             raise RuntimeError(
                 f"Model returned {len(stems)} output file(s) instead of the expected {expected_stems}. "
@@ -1122,6 +1190,11 @@ def demucs_batch(path_input, path_output, model, out_format, shifts, segment_siz
         logs.append(f"{total_files} audio files found")
         found_files.sort()
         progress(0, desc="Starting processing...")
+
+        # Verify model file integrity once before processing any files.
+        # If any .th weight file is corrupted we remove it here; load_model
+        # inside the loop will then re-download it before the first separation.
+        _verify_demucs_model_files(models_dir, model)
 
         for i, audio_files in enumerate(found_files):
             progress((i / total_files), desc=f"Processing file {i+1}/{total_files}")
