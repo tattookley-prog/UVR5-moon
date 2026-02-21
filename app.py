@@ -808,7 +808,7 @@ def _verify_demucs_model_files(models_dir, model_yaml):
 
 
 @track_presence("Performing Demucs Separation")
-def demucs_separator(audio, model, out_format, shifts, segment_size, segments_enabled, overlap, batch_size, norm_thresh, amp_thresh, progress=gr.Progress(track_tqdm=True)):
+def demucs_separator(audio, model, out_format, shifts, segment_size, segments_enabled, overlap, batch_size, norm_thresh, amp_thresh, single_stem="", progress=gr.Progress(track_tqdm=True)):
     model_path = os.path.join(models_dir, model)
     try:
         if not os.path.exists(model_path):
@@ -822,6 +822,7 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
             use_autocast=use_autocast,
             normalization_threshold=norm_thresh,
             amplification_threshold=amp_thresh,
+            output_single_stem=single_stem if single_stem.strip() else None,
             demucs_params={
                 "batch_size": batch_size,
                 "segment_size": segment_size,
@@ -839,7 +840,10 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
 
         stems = [os.path.join(out_dir, file_name) for file_name in separation]
 
-        expected_stems = 6 if model == "htdemucs_6s.yaml" else 4
+        if single_stem.strip():
+            expected_stems = 1
+        else:
+            expected_stems = 6 if model == "htdemucs_6s.yaml" else 4
         if len(stems) < expected_stems:
             # Separation produced fewer outputs than expected – could be a
             # missing, incomplete, or corrupted model weight file.  Remove any
@@ -855,6 +859,7 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
                 use_autocast=use_autocast,
                 normalization_threshold=norm_thresh,
                 amplification_threshold=amp_thresh,
+                output_single_stem=single_stem if single_stem.strip() else None,
                 demucs_params={
                     "batch_size": batch_size,
                     "segment_size": segment_size,
@@ -873,7 +878,9 @@ def demucs_separator(audio, model, out_format, shifts, segment_size, segments_en
                 f"Ensure all required model files for '{model}' are properly downloaded."
             )
 
-        if model == "htdemucs_6s.yaml":
+        if single_stem.strip():
+            return stems[0], None, None, None, None, None
+        elif model == "htdemucs_6s.yaml":
             return stems[0], stems[1], stems[2], stems[3], stems[4], stems[5]
         else:
             return stems[0], stems[1], stems[2], stems[3], None, None
@@ -904,7 +911,7 @@ def ensemble_separator(audio, models, out_format, segment_size, override_seg_siz
             elif model in vrarch_models:
                 stems = vrarch_separator(audio, model, out_format, 512, 5, True, False, 0.2, False, batch_size, norm_thresh, amp_thresh, "")
             elif model in demucs_models:
-                stems = demucs_separator(audio, model, out_format, 2, 40, True, overlap, batch_size, norm_thresh, amp_thresh)
+                stems = demucs_separator(audio, model, out_format, 2, 40, True, overlap, batch_size, norm_thresh, amp_thresh, "Vocals")
             else:
                 continue 
             
