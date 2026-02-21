@@ -2390,5 +2390,58 @@
             "Drums",
             "Other"
         ]
+    },
+    "htdemucs_ft.yaml": {
+        "Github": [
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/htdemucs_ft.yaml",
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/f7e0c4bc-ba3fe64a.th",
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/d12395a8-e57c48e6.th",
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/92cfc3b6-ef3bcb9c.th",
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/04573f0d-f3cf25b2.th"
+        ],
+        "Stems": [
+            "Drums",
+            "Bass",
+            "Other",
+            "Vocals"
+        ]
+    },
+    "htdemucs_6s.yaml": {
+        "Github": [
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/htdemucs_6s.yaml",
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/5c90dfd2-34c22ccb.th"
+        ],
+        "Stems": [
+            "Drums",
+            "Bass",
+            "Other",
+            "Vocals",
+            "Guitar",
+            "Piano"
+        ]
+    },
+    "htdemucs.yaml": {
+        "Github": [
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/htdemucs.yaml",
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/955717e8-8726e21a.th"
+        ],
+        "Stems": [
+            "Drums",
+            "Bass",
+            "Other",
+            "Vocals"
+        ]
+    },
+    "hdemucs_mmi.yaml": {
+        "Github": [
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/hdemucs_mmi.yaml",
+            "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/75fc33f5-1941ce65.th"
+        ],
+        "Stems": [
+            "Drums",
+            "Bass",
+            "Other",
+            "Vocals"
+        ]
     }
 }
