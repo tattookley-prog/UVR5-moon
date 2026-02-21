@@ -3,6 +3,7 @@ import sys
 import subprocess
 import re
 import platform
+import gc
 import torch
 import logging
 import yt_dlp
@@ -911,13 +912,12 @@ def ensemble_separator(audio, models, out_format, segment_size, override_seg_siz
             elif model in vrarch_models:
                 stems = vrarch_separator(audio, model, out_format, 512, 5, True, False, 0.2, False, batch_size, norm_thresh, amp_thresh, "")
             elif model in demucs_models:
-                # Run without single-stem filtering so all stems are produced.
-                # output_single_stem="Vocals" causes audio-separator to silently
-                # return 0 files for bag-of-models like htdemucs_ft.yaml.
-                # demucs_separator returns (bass, drums, other, vocals, ...) for
-                # 4- and 6-stem models, so vocals is always at index 3.
-                stems = demucs_separator(audio, model, out_format, 2, 40, True, overlap, batch_size, norm_thresh, amp_thresh, "")
-                vocals_stem = stems[3] if stems and len(stems) > 3 else None
+                # Request only the Vocals stem for ensemble combining, consistent
+                # with how UVR5 ensemble mode handles demucs models.
+                # demucs_separator with single_stem="Vocals" returns the vocals
+                # path at index 0: (vocals_path, None, None, None, None, None).
+                stems = demucs_separator(audio, model, out_format, 2, 40, True, overlap, batch_size, norm_thresh, amp_thresh, "Vocals")
+                vocals_stem = stems[0] if stems and stems[0] else None
                 if vocals_stem:
                     stems_list.append((vocals_stem, None))
                 continue
@@ -928,7 +928,11 @@ def ensemble_separator(audio, models, out_format, segment_size, override_seg_siz
                 stems_list.append(stems[:2])
         except Exception as e:
             gr.Warning(f"Error processing model {model}: {e}")
-            continue  
+            continue
+        finally:
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     if not stems_list:
         gr.Warning("No valid separations performed")
